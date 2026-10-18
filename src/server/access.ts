@@ -1,3 +1,4 @@
+import type { Row } from "@libsql/client";
 import type { NextResponse } from "next/server";
 import type { AuthUser, BillingMe, PlanInfo, SubscriptionInfo, SubscriptionStatus } from "@/lib/types";
 import { db, str, strOrNull } from "./db";
@@ -20,7 +21,7 @@ interface OpenSubscriptionRow {
 /** Assinatura aberta (pending, active ou past_due) mais recente do usuario. */
 export async function getOpenSubscription(userId: string): Promise<OpenSubscriptionRow | null> {
   const result = await db().execute({
-    sql: `SELECT s.id, s.status, s.current_period_end, p.slug, p.name, p.price_brl
+    sql: `SELECT s.id, s.status, s.current_period_end, p.slug, p.name, p.price_brl, p.billing_interval
           FROM subscriptions s
           LEFT JOIN plans p ON p.id = s.plan_id
           WHERE s.user_id = ? AND s.status IN ('pending', 'active', 'past_due')
@@ -35,7 +36,12 @@ export async function getOpenSubscription(userId: string): Promise<OpenSubscript
     status: str(row, "status") as SubscriptionStatus,
     current_period_end: strOrNull(row, "current_period_end"),
     plan: row.slug
-      ? { slug: str(row, "slug"), name: str(row, "name"), price_brl: Number(row.price_brl) }
+      ? {
+          slug: str(row, "slug"),
+          name: str(row, "name"),
+          price_brl: Number(row.price_brl),
+          billing_interval: str(row, "billing_interval") === "year" ? "year" : "month",
+        }
       : null,
   };
 }
@@ -59,17 +65,42 @@ export function subscriptionGrantsAccess(
   return until !== null && until > now;
 }
 
+type ActivePlan = PlanInfo & { id: string; billing_interval: "month" | "year" };
+
+function toActivePlan(row: Row): ActivePlan | null {
+  const price = Number(row.price_brl);
+  if (!Number.isFinite(price) || price <= 0) return null;
+  return {
+    id: str(row, "id"),
+    slug: str(row, "slug"),
+    name: str(row, "name"),
+    price_brl: price,
+    billing_interval: str(row, "billing_interval") === "year" ? "year" : "month",
+  };
+}
+
 /** Plano ativo com preco > 0 (ou null). O preco SEMPRE vem do banco. */
-export async function getActivePlan(slug: string): Promise<(PlanInfo & { id: string }) | null> {
+export async function getActivePlan(slug: string): Promise<ActivePlan | null> {
   const result = await db().execute({
-    sql: "SELECT id, slug, name, price_brl FROM plans WHERE slug = ? AND active = 1",
+    sql: "SELECT id, slug, name, price_brl, billing_interval FROM plans WHERE slug = ? AND active = 1",
     args: [slug],
   });
   const row = result.rows[0];
-  if (!row) return null;
-  const price = Number(row.price_brl);
-  if (!Number.isFinite(price) || price <= 0) return null;
-  return { id: str(row, "id"), slug: str(row, "slug"), name: str(row, "name"), price_brl: price };
+  return row ? toActivePlan(row) : null;
+}
+
+/** Planos pagos ativos. Mensal primeiro, anual depois. */
+export async function listActivePlans(): Promise<ActivePlan[]> {
+  const result = await db().execute(
+    `SELECT id, slug, name, price_brl, billing_interval
+     FROM plans
+     WHERE active = 1 AND price_brl > 0
+     ORDER BY CASE billing_interval WHEN 'year' THEN 1 ELSE 0 END, price_brl`,
+  );
+  return result.rows.flatMap((row) => {
+    const plan = toActivePlan(row);
+    return plan ? [plan] : [];
+  });
 }
 
 export async function isSubscriptionActive(user: AuthUser): Promise<boolean> {
@@ -87,8 +118,9 @@ export async function subscriptionGuard(user: AuthUser): Promise<NextResponse | 
 /** Corpo de GET /api/billing/me. */
 export async function buildBillingMe(user: AuthUser): Promise<BillingMe> {
   const isAdmin = isAdminEmail(user.email);
-  const [sub, plan] = await Promise.all([getOpenSubscription(user.id), getActivePlan(DEFAULT_PLAN_SLUG)]);
+  const [sub, plans] = await Promise.all([getOpenSubscription(user.id), listActivePlans()]);
   const access = isAdmin || subscriptionGrantsAccess(sub);
+  const monthly = plans.find((p) => p.slug === DEFAULT_PLAN_SLUG) ?? null;
 
   let subscription: SubscriptionInfo | null = null;
   if (sub) {
@@ -104,7 +136,8 @@ export async function buildBillingMe(user: AuthUser): Promise<BillingMe> {
   return {
     access,
     isAdmin,
-    plan: plan ? { slug: plan.slug, name: plan.name, price_brl: plan.price_brl } : null,
+    plan: monthly ? { slug: monthly.slug, name: monthly.name, price_brl: monthly.price_brl } : null,
+    plans: plans.map(({ slug, name, price_brl, billing_interval }) => ({ slug, name, price_brl, billing_interval })),
     subscription,
   };
 }

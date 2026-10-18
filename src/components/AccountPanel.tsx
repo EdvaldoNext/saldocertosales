@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import { CHECKOUT_TOKEN_KEY, PLAN_SLUG, statusLabel } from "@/lib/billing-ui";
+import { CHECKOUT_TOKEN_KEY, isIndefinitePeriod, periodLabel, statusLabel } from "@/lib/billing-ui";
 import { formatTimestampBR, toCurrency } from "@/lib/format";
-import type { AuthUser, BillingMe } from "@/lib/types";
+import type { AuthUser, BillingMe, PlanInfo } from "@/lib/types";
 import { useToast } from "./Toast";
 
 interface Props {
@@ -18,27 +18,34 @@ interface Props {
 
 export default function AccountPanel({ user, billing, checking, onBack }: Props) {
   const toast = useToast();
-  const [starting, setStarting] = useState(false);
+  const [startingSlug, setStartingSlug] = useState<string | null>(null);
 
-  // startCheckout(): cria o checkout, guarda o token e manda o browser para o Checkout Pro.
-  async function startCheckout() {
-    if (starting) return;
-    setStarting(true);
+  // startCheckout(): cria o checkout do plano escolhido e manda o browser para o Checkout Pro.
+  async function startCheckout(plan: PlanInfo) {
+    if (startingSlug) return;
+    setStartingSlug(plan.slug);
     try {
       const result = await api<{ init_point: string; checkout_token: string }>("/api/billing/create-checkout", {
         method: "POST",
-        body: { plan_slug: PLAN_SLUG, payer_email: user.email },
+        body: { plan_slug: plan.slug, payer_email: user.email },
       });
       localStorage.setItem(CHECKOUT_TOKEN_KEY, result.checkout_token);
       window.location.href = result.init_point;
     } catch (error) {
       toast(error instanceof ApiError ? error.message : "Nao foi possivel abrir o pagamento.", true);
-      setStarting(false);
+      setStartingSlug(null);
     }
   }
 
-  const plan = billing?.plan ?? billing?.subscription?.plan ?? null;
   const sub = billing?.subscription ?? null;
+  const currentPlan = sub?.plan ?? null;
+  const offers = billing?.plans?.length ? billing.plans : billing?.plan ? [billing.plan] : [];
+  const indefinite = isIndefinitePeriod(sub?.current_period_end) || isIndefinitePeriod(sub?.access_until);
+  const currentPrice = currentPlan
+    ? indefinite
+      ? `R$ ${toCurrency(currentPlan.price_brl)}`
+      : `R$ ${toCurrency(currentPlan.price_brl)} / ${periodLabel(currentPlan.billing_interval)}`
+    : "—";
 
   return (
     <section className="glass card account-card" aria-label="Conta">
@@ -61,11 +68,11 @@ export default function AccountPanel({ user, billing, checking, onBack }: Props)
           <dl className="account-rows">
             <div className="account-row">
               <dt>Plano</dt>
-              <dd>{plan ? plan.name : "—"}</dd>
+              <dd>{currentPlan ? currentPlan.name : "—"}</dd>
             </div>
             <div className="account-row">
               <dt>Preco</dt>
-              <dd>{plan ? `R$ ${toCurrency(plan.price_brl)} / 30 dias` : "—"}</dd>
+              <dd>{currentPrice}</dd>
             </div>
             <div className="account-row">
               <dt>Status</dt>
@@ -74,24 +81,36 @@ export default function AccountPanel({ user, billing, checking, onBack }: Props)
             {sub?.current_period_end ? (
               <div className="account-row">
                 <dt>Vencimento</dt>
-                <dd>{formatTimestampBR(sub.current_period_end)}</dd>
+                <dd>{indefinite ? "Tempo indeterminado" : formatTimestampBR(sub.current_period_end)}</dd>
               </div>
             ) : null}
           </dl>
 
           {checking ? <p className="account-hint">Confirmando seu pagamento...</p> : null}
 
-          <button
-            className="btn-primary account-cta"
-            type="button"
-            onClick={startCheckout}
-            disabled={starting || !plan}
-          >
-            {starting ? "Abrindo pagamento..." : "Liberar 30 dias"}
-          </button>
-          <p className="account-hint">
-            Pagamento unico pelo Mercado Pago. Cada pagamento libera 30 dias, sem cobranca automatica.
-          </p>
+          {indefinite ? null : (
+            <>
+              <div className="account-actions">
+                {offers.map((offer) => (
+                  <button
+                    key={offer.slug}
+                    className="btn-primary account-cta"
+                    type="button"
+                    onClick={() => startCheckout(offer)}
+                    disabled={startingSlug !== null}
+                  >
+                    {startingSlug === offer.slug
+                      ? "Abrindo pagamento..."
+                      : `Pagar ${offer.name} · R$ ${toCurrency(offer.price_brl)} / ${periodLabel(offer.billing_interval)}`}
+                  </button>
+                ))}
+              </div>
+              <p className="account-hint">
+                Pagamento unico pelo Mercado Pago. O mensal libera 30 dias e o anual libera 12 meses, sem cobranca
+                automatica.
+              </p>
+            </>
+          )}
         </>
       )}
     </section>

@@ -1,9 +1,9 @@
-import { addDaysIso, db, isUniqueViolation, nowIso, str, strOrNull } from "@/server/db";
+import { db, isUniqueViolation, nowIso, str, strOrNull } from "@/server/db";
 import {
   findSessionByToken,
   findSubscriptionById,
   findSubscriptionByPreference,
-  PERIOD_DAYS,
+  periodEndForPlan,
   type SubscriptionRow,
 } from "@/server/billing";
 import { asString, fail, json, readJson } from "@/server/http";
@@ -72,9 +72,14 @@ export async function POST(req: Request) {
     if (paid && !alreadyActivatedByWebhook) {
       await tx.execute({
         sql: `UPDATE subscriptions
-              SET user_id = ?, checkout_session_id = ?, status = 'active', current_period_end = ?, canceled_at = NULL, updated_at = ?
+              SET user_id = ?, checkout_session_id = ?, status = 'active',
+                  current_period_end = CASE
+                    WHEN current_period_end >= '9000-01-01' THEN current_period_end
+                    ELSE ?
+                  END,
+                  canceled_at = NULL, updated_at = ?
               WHERE id = ?`,
-        args: [user.id, session.id, addDaysIso(PERIOD_DAYS), now, sub.id],
+        args: [user.id, session.id, await periodEndForPlan(tx, session.plan_id), now, sub.id],
       });
     } else {
       await tx.execute({

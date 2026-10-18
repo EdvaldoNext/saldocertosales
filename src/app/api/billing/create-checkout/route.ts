@@ -41,8 +41,8 @@ export async function POST(req: Request) {
     items: [
       {
         id: plan.slug,
-        title: `SaldoCerto — ${plan.name} (30 dias)`,
-        description: "Acesso por 30 dias",
+        title: `SaldoCerto — ${plan.name} (${plan.billing_interval === "year" ? "12 meses" : "30 dias"})`,
+        description: plan.billing_interval === "year" ? "Acesso por 12 meses" : "Acesso por 30 dias",
         quantity: 1,
         currency_id: "BRL",
         unit_price: plan.price_brl,

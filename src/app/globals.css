@@ -1000,6 +1000,11 @@ button:disabled {
   color: var(--pink);
 }
 
+.account-actions {
+  display: grid;
+  gap: 0.6rem;
+}
+
 .account-cta {
   width: 100%;
   padding: 0.9rem 1rem;

@@ -1,9 +1,9 @@
-import { addDaysIso, db, isUniqueViolation, nowIso, uuid } from "@/server/db";
+import { db, isUniqueViolation, nowIso, uuid } from "@/server/db";
 import {
   findSessionByPreference,
   findSessionByToken,
   findSubscriptionForSession,
-  PERIOD_DAYS,
+  periodEndForPlan,
   type CheckoutSessionRow,
 } from "@/server/billing";
 import { fail, json } from "@/server/http";
@@ -119,13 +119,18 @@ async function activateApprovedPayment(payment: MpPayment): Promise<{ activated:
       args: [now, session.id],
     });
 
-    // 8. Assinatura -> active, fim = agora + 30 dias (NAO soma sobre o fim anterior).
-    const periodEnd = addDaysIso(PERIOD_DAYS);
+    // 8. Assinatura -> active, fim = agora + periodo do plano pago (NAO soma sobre o fim anterior).
+    const periodEnd = await periodEndForPlan(tx, session.plan_id);
     const sub = await findSubscriptionForSession(tx, session, preferenceId);
     if (sub) {
       await tx.execute({
         sql: `UPDATE subscriptions
-              SET status = 'active', current_period_end = ?, checkout_session_id = ?, canceled_at = NULL, updated_at = ?
+              SET status = 'active',
+                  current_period_end = CASE
+                    WHEN current_period_end >= '9000-01-01' THEN current_period_end
+                    ELSE ?
+                  END,
+                  checkout_session_id = ?, canceled_at = NULL, updated_at = ?
               WHERE id = ?`,
         args: [periodEnd, session.id, now, sub.id],
       });

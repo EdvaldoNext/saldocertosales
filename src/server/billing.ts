@@ -1,8 +1,10 @@
 import type { Client, Row } from "@libsql/client";
-import { str, strOrNull } from "./db";
+import { addDaysIso, addMonthsIso, str, strOrNull } from "./db";
 
-/** Periodo liberado apos cada pagamento approved (nao ha cobranca automatica). */
+/** Periodo do plano mensal apos cada pagamento approved (nao ha cobranca automatica). */
 export const PERIOD_DAYS = 30;
+/** Periodo do plano anual: um pagamento libera 12 meses. */
+export const PERIOD_MONTHS_YEAR = 12;
 /** Validade da sessao de checkout. */
 export const CHECKOUT_SESSION_DAYS = 7;
 
@@ -84,6 +86,16 @@ export async function findSubscriptionByPreference(ex: Executor, preferenceId: s
     args: [preferenceId],
   });
   return r.rows[0] ? toSubscription(r.rows[0]) : null;
+}
+
+/** Fim do acesso do plano pago. Mensal = 30 dias. Anual = 12 meses. Nao soma sobre o fim anterior. */
+export async function periodEndForPlan(ex: Executor, planId: string, from: Date = new Date()): Promise<string> {
+  const r = await ex.execute({
+    sql: "SELECT billing_interval FROM plans WHERE id = ?",
+    args: [planId],
+  });
+  const interval = r.rows[0] ? String(r.rows[0].billing_interval) : "month";
+  return interval === "year" ? addMonthsIso(PERIOD_MONTHS_YEAR, from) : addDaysIso(PERIOD_DAYS, from);
 }
 
 const OPEN = new Set(["pending", "active", "past_due"]);

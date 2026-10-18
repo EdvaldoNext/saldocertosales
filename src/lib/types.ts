@@ -17,6 +17,8 @@ export interface PlanInfo {
   slug: string;
   name: string;
   price_brl: number;
+  /** month = 30 dias, year = 12 meses. Ausente em respostas antigas. */
+  billing_interval?: "month" | "year";
 }
 
 export type SubscriptionStatus = "pending" | "active" | "past_due" | "canceled" | "expired";
@@ -32,6 +34,9 @@ export interface SubscriptionInfo {
 export interface BillingMe {
   access: boolean;
   isAdmin: boolean;
+  /** Plano mensal padrao. Mantido para quem le so um plano. */
   plan: PlanInfo | null;
+  /** Planos ativos que o usuario pode pagar. */
+  plans: PlanInfo[];
   subscription: SubscriptionInfo | null;
 }

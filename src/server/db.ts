@@ -28,6 +28,17 @@ export function addDaysIso(days: number, from: Date = new Date()): string {
   return new Date(from.getTime() + days * 24 * 60 * 60 * 1000).toISOString();
 }
 
+/** Soma meses no calendario UTC (31/01 + 1 mes cai no ultimo dia de fevereiro). */
+export function addMonthsIso(months: number, from: Date = new Date()): string {
+  const d = new Date(from.getTime());
+  const day = d.getUTCDate();
+  d.setUTCDate(1);
+  d.setUTCMonth(d.getUTCMonth() + months);
+  const lastDay = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  d.setUTCDate(Math.min(day, lastDay));
+  return d.toISOString();
+}
+
 export function str(row: Row, key: string): string {
   return String(row[key]);
 }
