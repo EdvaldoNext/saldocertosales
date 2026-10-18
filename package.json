@@ -1,0 +1,28 @@
+{
+  "name": "saldocerto",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SaldoCerto - controle de despesas pessoais (PWA) com acesso pago via Mercado Pago Checkout Pro.",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "migrate": "node --env-file-if-exists=.env.local scripts/migrate.mjs"
+  },
+  "dependencies": {
+    "@libsql/client": "^0.18.0",
+    "bcryptjs": "^3.0.2",
+    "chart.js": "^4.5.1",
+    "jose": "^6.2.12",
+    "next": "^16.4.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "typescript": "^5.9.0"
+  }
+}

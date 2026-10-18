@@ -1,0 +1,26 @@
+# dependencias
+node_modules
+
+# next
+.next
+out
+next-env.d.ts
+*.tsbuildinfo
+
+# segredos e ambiente
+.env
+.env.*
+!.env.example
+
+# banco local de desenvolvimento (libSQL em arquivo)
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+local.db*
+
+# logs e lixo do sistema
+npm-debug.log*
+.DS_Store
+Thumbs.db
+.vercel
